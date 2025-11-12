@@ -1,0 +1,218 @@
+name: Vite App - Azure Static Web Apps Deployment
+
+# TEMPLATE: This workflow is configured as a template and will not trigger automatically.
+# To use: Uncomment the push/pull_request triggers and update branch names as needed.
+
+permissions:
+  contents: read
+  packages: read
+
+on:
+  # Automatic triggers are commented out - this is a template
+  # push:
+  #   branches:
+  #     - NAME OF DEPLOYMENT BRANCH
+  workflow_dispatch:
+  # pull_request:
+  #   types: [opened, synchronize, reopened, closed]
+  #   branches:
+  #     - AME OF DEPLOYMENT BRANCH
+
+env:
+  VITE_API_BASE_DOMAIN: "https://tame-web-api.azurewebsites.net/"
+  VITE_API_BASE_DOMAIN_DEV: "https://tame-web-api-staging.azurewebsites.net/"
+  VITE_PROD_OR_DEV: ${{ github.ref == 'refs/heads/NAME OF DEPLOYMENT BRANCH' && 'production' || 'development' }}
+  NODE_VERSION: '20'
+  PRODUCTION_BRANCH: NAME OF DEPLOYMENT BRANCH
+
+jobs:
+  # Test job - runs unit tests before deployment
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+          lfs: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          registry-url: 'https://npm.pkg.github.com'
+          scope: '@transport-for-the-north'
+
+      - name: Configure npm for GitHub Packages
+        run: |
+          cat > .npmrc << EOF
+          //npm.pkg.github.com/:_authToken=${{ secrets.PAT_GITHUB || secrets.GITHUB_TOKEN }}
+          @transport-for-the-north:registry=https://npm.pkg.github.com/transport-for-the-north
+          EOF
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Fix Rollup optional dependencies
+        run: |
+          # Fix npm bug with optional dependencies (rollup platform binaries)
+          npm install --no-save --force @rollup/rollup-linux-x64-gnu 2>/dev/null || \
+          npm install --no-save --force @rollup/rollup-linux-x64-musl 2>/dev/null || \
+          echo "Rollup platform binary installation attempted"
+
+      - name: Run unit tests
+        run: npm test
+        env:
+          CI: true
+
+  # Build and Deploy job - builds Vite app and deploys to Azure
+  build-and-deploy:
+    name: Build and Deploy to Azure
+    needs: test
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    environment: bsip-test
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+          lfs: false
+          token: ${{ secrets.PAT_GITHUB }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          registry-url: 'https://npm.pkg.github.com'
+          scope: '@transport-for-the-north'
+
+      - name: Configure npm for GitHub Packages
+        run: |
+          cat > .npmrc << EOF
+          //npm.pkg.github.com/:_authToken=${{ secrets.PAT_GITHUB || secrets.GITHUB_TOKEN }}
+          @transport-for-the-north:registry=https://npm.pkg.github.com/transport-for-the-north
+          EOF
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Fix Rollup optional dependencies
+        run: |
+          npm install --no-save --force @rollup/rollup-linux-x64-gnu 2>/dev/null || \
+          npm install --no-save --force @rollup/rollup-linux-x64-musl 2>/dev/null || \
+          echo "Rollup platform binary installation attempted"
+
+      - name: Set build environment variables
+        run: |
+          echo "VITE_APP_NAME=bsip" >> $GITHUB_ENV
+          echo "VITE_APP_MAP_API_TOKEN=${{ secrets.VITE_APP_MAP_API_TOKEN }}" >> $GITHUB_ENV
+          echo "APP_TITLE=${{ vars.APP_TITLE }}" >> $GITHUB_ENV
+          echo "APP_DESCRIPTION=${{ vars.APP_DESCRIPTION }}" >> $GITHUB_ENV
+          echo "CLARITY_PROJECT_ID=${{ vars.CLARITY_PROJECT_ID }}" >> $GITHUB_ENV
+
+      - name: Update site metadata
+        run: |
+          if [ -f "scripts/update_metadata.sh" ]; then
+            chmod +x scripts/update_metadata.sh
+            ./scripts/update_metadata.sh
+          else
+            echo "Metadata script not found, skipping..."
+          fi
+
+      - name: Verify package.json has build script
+        run: |
+          echo "Verifying build configuration..."
+          if ! grep -q '"build"' package.json; then
+            echo "ERROR: No build script found in package.json"
+            exit 1
+          fi
+          echo "✓ Build script found"
+          echo "Azure Static Web Apps will build the app using: npm run build"
+
+      - name: Deploy to Azure Static Web Apps
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          action: "upload"
+          production_branch: ${{ env.PRODUCTION_BRANCH }}
+          app_location: "/" # App source code path
+          output_location: "dist" # Built app content directory (relative to app_location)
+          app_build_command: "npm install --no-save --force @rollup/rollup-linux-x64-gnu 2>/dev/null || npm install --no-save --force @rollup/rollup-linux-x64-musl 2>/dev/null || true && npm run build"
+          # Custom build command to fix rollup optional dependencies bug
+
+  # Preview deployment for pull requests
+  preview:
+    name: Preview Deployment
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+          lfs: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          registry-url: 'https://npm.pkg.github.com'
+          scope: '@transport-for-the-north'
+
+      - name: Configure npm for GitHub Packages
+        run: |
+          cat > .npmrc << EOF
+          //npm.pkg.github.com/:_authToken=${{ secrets.PAT_GITHUB || secrets.GITHUB_TOKEN }}
+          @transport-for-the-north:registry=https://npm.pkg.github.com/transport-for-the-north
+          EOF
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Fix Rollup optional dependencies
+        run: |
+          npm install --no-save --force @rollup/rollup-linux-x64-gnu 2>/dev/null || \
+          npm install --no-save --force @rollup/rollup-linux-x64-musl 2>/dev/null || \
+          echo "Rollup platform binary installation attempted"
+
+      - name: Build for preview
+        run: npm run build
+        env:
+          NODE_ENV: production
+          VITE_APP_NAME: bsip
+
+      - name: Deploy preview to Azure Static Web Apps
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          action: "upload"
+          production_branch: ${{ env.PRODUCTION_BRANCH }}
+          app_location: "/"
+          output_location: "dist"
+          skip_app_build: true
+
+  # Cleanup job for closed pull requests
+  cleanup:
+    name: Cleanup Preview
+    if: github.event_name == 'pull_request' && github.event.action == 'closed'
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Close preview deployment
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
+          action: "close"
+          app_location: "/"
+
