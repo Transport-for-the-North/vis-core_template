@@ -54,6 +54,10 @@ python sync_repos.py --dry-run
 python sync_repos.py
 ```
 
+### Adding new files or folders
+
+If a path in `filesToSync` exists in the template but not in a target repo, it will be created in that target (parent folders included) and included in the PR. If a path in `filesToSync` is missing from the template, it is skipped with a warning.
+
 ## Configuration
 
 Edit `config.json`:
