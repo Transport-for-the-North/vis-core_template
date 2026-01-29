@@ -1,0 +1,28 @@
+{
+  "templateRepo": {
+    "owner": "Transport-for-the-North",
+    "name": "vis-core_template",
+    "branch": "main"
+  },
+  "targetRepos": [
+    { "owner": "Transport-for-the-North", "name": "dlog-visualisation-framework" },
+    { "owner": "Transport-for-the-North", "name": "NoRMS-Visualisation-Framework" },
+    { "owner": "Transport-for-the-North", "name": "Severance-Visualisation-Framework" },
+    { "owner": "Transport-for-the-North", "name": "TRSE-Visualisation-Framework" },
+    { "owner": "Transport-for-the-North", "name": "NoHAM-Visualisation-Framework" },
+    { "owner": "Transport-for-the-North", "name": "ME-Visualisation-Framework" },
+    { "owner": "Transport-for-the-North", "name": "CVT-visualisation-framework" }
+  ],
+  "baseBranch": "dev",
+  "filesToSync": [
+    "src/main.jsx",
+    "package.json"
+  ],
+  "prSettings": {
+    "branchPrefix": "sync/template-update",
+    "title": "Sync files from template repo",
+    "body": "## Summary\n\nThis PR syncs the following files from the template repository:\n\n{{FILES}}\n\n## Review\n\nPlease review the changes before merging.",
+    "assignees": ["NicholasAJackson7"],
+    "reviewers": []
+  }
+}

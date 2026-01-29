@@ -24,3 +24,8 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Batch sync tool
+batch-sync/temp/
+__pycache__/
+*.pyc
