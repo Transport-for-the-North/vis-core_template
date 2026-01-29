@@ -20,7 +20,7 @@
     "@mapbox/mapbox-gl-draw": "^1.5.0",
     "@mapcomponents/react-maplibre": "^1.6.1",
     "@ookla/mapbox-gl-draw-rectangle": "^1.2.2",
-    "@transport-for-the-north/vis-core": "0.3.5",
+    "@transport-for-the-north/vis-core": "0.6.1",
     "@turf/turf": "^7.2.0",
     "chroma-js": "^3.1.2",
     "colorbrewer": "^1.6.1",
