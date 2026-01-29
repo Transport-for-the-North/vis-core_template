@@ -9,6 +9,7 @@ import os
 import shutil
 import sys
 import time
+import stat
 from pathlib import Path
 
 from git import Repo
@@ -312,11 +313,58 @@ def main():
         for r in failed:
             log(f"  {r['repo']}: {r['error']}", "RED")
     
-    # Cleanup
+    # Cleanup: robust removal for WORK_DIR (handles Windows permission issues)
     log("\nCleaning up temporary files...", "DIM")
     try:
         time.sleep(1)  # Let git processes release file handles
-        shutil.rmtree(WORK_DIR, ignore_errors=True)
+
+        def _on_rm_error(func, path, exc_info):
+            try:
+                os.chmod(path, stat.S_IWRITE)
+            except Exception:
+                pass
+            try:
+                func(path)
+            except Exception:
+                pass
+
+        # Try a few times to remove the directory
+        removed = False
+        for attempt in range(3):
+            try:
+                if WORK_DIR.exists():
+                    shutil.rmtree(WORK_DIR, onerror=_on_rm_error)
+                removed = not WORK_DIR.exists()
+                if removed:
+                    break
+            except Exception:
+                time.sleep(0.5)
+
+        # Final fallback: try removing files individually then the directory
+        if WORK_DIR.exists():
+            for root, dirs, files in os.walk(WORK_DIR, topdown=False):
+                for name in files:
+                    fp = os.path.join(root, name)
+                    try:
+                        os.chmod(fp, stat.S_IWRITE)
+                        os.remove(fp)
+                    except Exception:
+                        pass
+                for name in dirs:
+                    dp = os.path.join(root, name)
+                    try:
+                        os.rmdir(dp)
+                    except Exception:
+                        pass
+            try:
+                os.rmdir(WORK_DIR)
+                removed = not WORK_DIR.exists()
+            except Exception:
+                removed = False
+
+        if not removed:
+            log(f"  Warning: Could not fully clean up temp folder: {WORK_DIR}", "YELLOW")
+            log(f"  You can manually delete: {WORK_DIR}", "YELLOW")
     except Exception as e:
         log(f"  Warning: Could not fully clean up temp folder: {e}", "YELLOW")
         log(f"  You can manually delete: {WORK_DIR}", "YELLOW")
