@@ -1,15 +1,29 @@
 /// <reference types="vitest" />
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import dotenv from 'dotenv'
+
+// Load .env.local for local development overrides
+dotenv.config({ path: '.env.local' })
 
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
+  resolve: {
+    alias: {
+      // Use local vis-core when USE_LOCAL_VIS_CORE=true
+      // Set VIS_CORE_PATH in .env.local to your local vis-core dist folder
+      ...(process.env.USE_LOCAL_VIS_CORE === 'true' && process.env.VIS_CORE_PATH && {
+        '@transport-for-the-north/vis-core': process.env.VIS_CORE_PATH
+      })
+    }
+  },
   server: {
     port: 3000,
   },
   optimizeDeps: {
     include: ['lz-string'],
+    exclude: process.env.USE_LOCAL_VIS_CORE === 'true' ? ['@transport-for-the-north/vis-core'] : [],
   },
   build: {
     // Disable source maps in production to reduce build size significantly
@@ -33,34 +47,6 @@ export default defineConfig({
     reportCompressedSize: true,
     rollupOptions: {
       output: {
-        // Simplified chunk splitting to avoid circular dependency issues
-        manualChunks: (id) => {
-          // Split node_modules into separate chunks
-          if (id.includes('node_modules')) {
-            // React and related - keep together
-            if (id.includes('react') || id.includes('react-dom') || id.includes('react-router') || id.includes('scheduler')) {
-              return 'react-vendor';
-            }
-            // Map libraries (these are large)
-            if (id.includes('mapbox-gl') || id.includes('maplibre') || id.includes('@mapcomponents') || id.includes('leaflet')) {
-              return 'map-vendor';
-            }
-            // Turf.js (geographic library - can be large)
-            if (id.includes('@turf')) {
-              return 'turf-vendor';
-            }
-            // Other large vendor libraries
-            if (id.includes('@transport-for-the-north/vis-core')) {
-              return 'vis-core-vendor';
-            }
-            // styled-components and related
-            if (id.includes('styled-components') || id.includes('stylis')) {
-              return 'styled-vendor';
-            }
-            // All other node_modules
-            return 'vendor';
-          }
-        },
         // Optimize chunk file names
         chunkFileNames: 'assets/js/[name]-[hash].js',
         entryFileNames: 'assets/js/[name]-[hash].js',
