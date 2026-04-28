@@ -12,6 +12,7 @@ dist
 dist-ssr
 *.local
 .npmrc.local
+.npmrc
 
 
 # Editor directories and files
