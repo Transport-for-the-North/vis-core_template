@@ -8,22 +8,24 @@ permissions:
   packages: read
 
 on:
-  # Automatic triggers are commented out - this is a template
+  # Automatic triggers are commented out - this is a template - You will need to uncomment and configure the triggers for your specific use case.
   # push:
   #   branches:
-  #     - NAME OF DEPLOYMENT BRANCH
-  workflow_dispatch:
+  #     - dev
+  #     - main
+  # workflow_dispatch:
   # pull_request:
   #   types: [opened, synchronize, reopened, closed]
   #   branches:
-  #     - AME OF DEPLOYMENT BRANCH
+  #     - dev
+  #     - main
 
 env:
   VITE_API_BASE_DOMAIN: "https://tame-web-api.azurewebsites.net/"
   VITE_API_BASE_DOMAIN_DEV: "https://tame-web-api-staging.azurewebsites.net/"
-  VITE_PROD_OR_DEV: ${{ github.ref == 'refs/heads/NAME OF DEPLOYMENT BRANCH' && 'production' || 'development' }}
+  VITE_PROD_OR_DEV: ${{ github.ref == 'refs/heads/main' && 'production' || 'development' }}
   NODE_VERSION: '20'
-  PRODUCTION_BRANCH: NAME OF DEPLOYMENT BRANCH
+  PRODUCTION_BRANCH: main
 
 jobs:
   # Test job - runs unit tests before deployment
@@ -46,16 +48,12 @@ jobs:
           cache: 'npm'
           registry-url: 'https://npm.pkg.github.com'
           scope: '@transport-for-the-north'
-
-      - name: Configure npm for GitHub Packages
-        run: |
-          cat > .npmrc << EOF
-          //npm.pkg.github.com/:_authToken=${{ secrets.PAT_GITHUB || secrets.GITHUB_TOKEN }}
-          @transport-for-the-north:registry=https://npm.pkg.github.com/transport-for-the-north
-          EOF
+          always-auth: true
 
       - name: Install dependencies
         run: npm ci
+        env:
+          NODE_AUTH_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
 
       - name: Fix Rollup optional dependencies
         run: |
@@ -69,13 +67,25 @@ jobs:
         env:
           CI: true
 
+      - name: Install Playwright Browsers
+        run: npx playwright install --with-deps
+
+      - name: Run Playwright e2e tests
+        run: npm run test:e2e:prod
+        env:
+          CI: true
+
   # Build and Deploy job - builds Vite app and deploys to Azure
   build-and-deploy:
-    name: Build and Deploy to Azure
+    name: Build and Deploy to Azure (${{ matrix.environment }})
     needs: test
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
-    environment: bsip-test
+    environment: ${{ matrix.environment }}
+    strategy:
+      matrix:
+        # The name of the app environment corresponds to the Azure Static Web App environment name. Replace with your own environment names as needed.
+        environment: [appOne, appTwo, appThree]
     
     steps:
       - name: Checkout code
@@ -83,7 +93,6 @@ jobs:
         with:
           submodules: true
           lfs: false
-          token: ${{ secrets.PAT_GITHUB }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -92,16 +101,12 @@ jobs:
           cache: 'npm'
           registry-url: 'https://npm.pkg.github.com'
           scope: '@transport-for-the-north'
-
-      - name: Configure npm for GitHub Packages
-        run: |
-          cat > .npmrc << EOF
-          //npm.pkg.github.com/:_authToken=${{ secrets.PAT_GITHUB || secrets.GITHUB_TOKEN }}
-          @transport-for-the-north:registry=https://npm.pkg.github.com/transport-for-the-north
-          EOF
+          always-auth: true
 
       - name: Install dependencies
         run: npm ci
+        env: 
+          NODE_AUTH_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
 
       - name: Fix Rollup optional dependencies
         run: |
@@ -111,11 +116,12 @@ jobs:
 
       - name: Set build environment variables
         run: |
-          echo "VITE_APP_NAME=bsip" >> $GITHUB_ENV
+          echo "VITE_APP_NAME=${{ matrix.environment }}" >> $GITHUB_ENV
           echo "VITE_APP_MAP_API_TOKEN=${{ secrets.VITE_APP_MAP_API_TOKEN }}" >> $GITHUB_ENV
           echo "APP_TITLE=${{ vars.APP_TITLE }}" >> $GITHUB_ENV
           echo "APP_DESCRIPTION=${{ vars.APP_DESCRIPTION }}" >> $GITHUB_ENV
           echo "CLARITY_PROJECT_ID=${{ vars.CLARITY_PROJECT_ID }}" >> $GITHUB_ENV
+          echo "VITE_CLARITY_PROJECT_ID=${{ vars.CLARITY_PROJECT_ID }}" >> $GITHUB_ENV
 
       - name: Update site metadata
         run: |
@@ -153,6 +159,10 @@ jobs:
     name: Preview Deployment
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    environment: ${{ matrix.environment }}
+    strategy:
+      matrix:
+        environment: [appOne, appTwo, appThree]
     
     steps:
       - name: Checkout code
@@ -168,16 +178,12 @@ jobs:
           cache: 'npm'
           registry-url: 'https://npm.pkg.github.com'
           scope: '@transport-for-the-north'
-
-      - name: Configure npm for GitHub Packages
-        run: |
-          cat > .npmrc << EOF
-          //npm.pkg.github.com/:_authToken=${{ secrets.PAT_GITHUB || secrets.GITHUB_TOKEN }}
-          @transport-for-the-north:registry=https://npm.pkg.github.com/transport-for-the-north
-          EOF
+          always-auth: true
 
       - name: Install dependencies
         run: npm ci
+        env:
+          NODE_AUTH_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
 
       - name: Fix Rollup optional dependencies
         run: |
@@ -189,7 +195,8 @@ jobs:
         run: npm run build
         env:
           NODE_ENV: production
-          VITE_APP_NAME: bsip
+          VITE_APP_MAP_API_TOKEN: ${{ secrets.VITE_APP_MAP_API_TOKEN }}
+          VITE_APP_NAME: ${{ matrix.environment }}
 
       - name: Deploy preview to Azure Static Web Apps
         uses: Azure/static-web-apps-deploy@v1
@@ -198,8 +205,9 @@ jobs:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           action: "upload"
           production_branch: ${{ env.PRODUCTION_BRANCH }}
-          app_location: "/"
-          output_location: "dist"
+          app_location: "dist"
+          output_location: "."
+          config_file_location: "src"
           skip_app_build: true
 
   # Cleanup job for closed pull requests
@@ -207,12 +215,13 @@ jobs:
     name: Cleanup Preview
     if: github.event_name == 'pull_request' && github.event.action == 'closed'
     runs-on: ubuntu-latest
+    environment: ${{ matrix.environment }}
     
     steps:
       - name: Close preview deployment
         uses: Azure/static-web-apps-deploy@v1
         with:
           azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
           action: "close"
-          app_location: "/"
 
