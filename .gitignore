@@ -29,3 +29,8 @@ dist-ssr
 npm list
 
 test-results/
+
+# Batch sync tool
+batch-sync/temp/
+__pycache__/
+*.pyc
