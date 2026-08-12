@@ -1,11 +1,23 @@
 import { setProdOrDev, setApiBaseDomain, setApiBaseDomainDev, setMapApiToken, setAppName } from '@transport-for-the-north/vis-core';
 import { api } from '@transport-for-the-north/vis-core/services';
 
-const appName = import.meta.env.VITE_APP_NAME;
 const mapApiToken = import.meta.env.VITE_APP_MAP_API_TOKEN;
 const prodOrDev = import.meta.env.VITE_PROD_OR_DEV;
 const apiBaseDomain = import.meta.env.VITE_API_BASE_DOMAIN;
 const apiBaseDomainDev = import.meta.env.VITE_API_BASE_DOMAIN_DEV;
+const appName = import.meta.env.VITE_APP_NAME;
+const appTitle = import.meta.env.VITE_APP_TITLE;
+
+function setDocumentTitle() {
+  if (typeof document === 'undefined') {
+    return;
+  }
+
+  const defaultTitle = 'TfN Visualiser'; // fallback if no title is set in .env
+  document.title = (appTitle ?? '').trim() || defaultTitle;
+}
+
+setDocumentTitle();
 
 setAppName(appName);
 setMapApiToken(mapApiToken);
@@ -34,7 +46,7 @@ console.log("[Clarity] VITE_APP_CLARITY_ID =", import.meta.env.VITE_CLARITY_PROJ
   // define queue immediately
   window.clarity = window.clarity || function(){ (window.clarity.q = window.clarity.q || []).push(arguments); };
 
-  if (!id) { console.warn("Missing VITE_APP_CLARITY_ID"); return; }
+  if (!id) { console.warn("Missing VITE_CLARITY_PROJECT_ID"); return; }
 
   // default deny
   window.clarity("consentv2", { ad_Storage:"denied", analytics_Storage:"denied" });
